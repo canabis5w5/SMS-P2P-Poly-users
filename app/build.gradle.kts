@@ -45,5 +45,6 @@ dependencies {
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
     implementation ("io.github.webrtc-sdk:android:144.7559.09")
+    implementation("com.squareup.okhttp3:okhttp:5.4.0")
 
 }

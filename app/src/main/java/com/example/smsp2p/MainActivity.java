@@ -13,6 +13,11 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -24,6 +29,11 @@ public class MainActivity extends AppCompatActivity {
     private PeerConnection peerConnection;
     private DataChannel dataChannel;
 
+    // ПЕРЕМЕННЫЕ ДЛЯ АВТОМАТИЗАЦИИ СИГНАЛИНГА
+    private WebSocket webSocket;
+    private OkHttpClient client;
+    private final String ROOM_ID = "my_secret_room_123";
+    private final String WS_SERVER_URL = "ws://ipcamssss.online:8888";
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -37,7 +47,7 @@ public class MainActivity extends AppCompatActivity {
         btnAcceptSdp = findViewById(R.id.btnAcceptSdp);
         btnSend = findViewById(R.id.btnSend);
 
-        // 1. Инициализация WebRTC ядра
+        // 1. Инициализация WebRTC ядра (Ваш исходный блок)
         PeerConnectionFactory.InitializationOptions initOptions = PeerConnectionFactory.InitializationOptions
                 .builder(getApplicationContext()).createInitializationOptions();
         PeerConnectionFactory.initialize(initOptions);
@@ -54,7 +64,7 @@ public class MainActivity extends AppCompatActivity {
         PeerConnection.RTCConfiguration rtcConfig = new PeerConnection.RTCConfiguration(iceServers);
         rtcConfig.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
 
-        // 3. Создание PeerConnection с обработчиками
+        // 3. Создание PeerConnection (Ваш исходный блок)
         peerConnection = factory.createPeerConnection(rtcConfig, new PeerConnection.Observer() {
             @Override
             public void onIceCandidate(IceCandidate candidate) {
@@ -105,103 +115,107 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onRenegotiationNeeded() {}
         });
 
-        // Кнопка 1: Создание Оффера (Инициатор чата)
-        btnCreateOffer.setOnClickListener(v -> {
-            if (peerConnection == null) return;
-            updateStatus("Генерация кода (STUN)...");
+        // Слушатели кликов
+        btnCreateOffer.setOnClickListener(v -> createOffer());
+        btnAcceptSdp.setOnClickListener(v -> acceptSdpFromEditText());
+        btnSend.setOnClickListener(v -> sendMessage());
 
-            DataChannel.Init init = new DataChannel.Init();
-            dataChannel = peerConnection.createDataChannel("sendDataChannel", init);
-            setupDataChannelCallbacks();
+        // Запуск фонового сетевого рукопожатия
+        initWebSocket();
+    }
 
-            MediaConstraints constraints = new MediaConstraints();
-            constraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveAudio", "false"));
-            constraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveVideo", "false"));
+    private void initWebSocket() {
+        client = new OkHttpClient();
+        Request request = new Request.Builder().url(WS_SERVER_URL).build();
 
-            peerConnection.createOffer(new SdpObserverAdapter() {
-                @Override
-                public void onCreateSuccess(SessionDescription desc) {
-                    peerConnection.setLocalDescription(new SdpObserverAdapter() {
-                        @Override
-                        public void onSetSuccess() {
-                            runOnUiThread(() -> {
-                                etSdpExchange.setText(desc.description);
-                                updateStatus("Базовый код готов! Перешлите его другу.");
-                            });
+        webSocket = client.newWebSocket(request, new WebSocketListener() {
+            @Override
+            public void onOpen(WebSocket webSocket, Response response) {
+                updateStatus("Подключено к сигнальному серверу!");
+                String joinMsg = "{\"type\":\"join\",\"room\":\"" + ROOM_ID + "\"}";
+                webSocket.send(joinMsg);
+            }
+
+            @Override
+            public void onMessage(WebSocket webSocket, String text) {
+                try {
+                    org.json.JSONObject json = new org.json.JSONObject(text);
+                    String msgType = json.optString("type");
+
+                    // ИСПРАВЛЕНО: Выводим на экран, зашел ли друг в комнату
+                    if ("room_status".equals(msgType)) {
+                        int devicesCount = json.getInt("count");
+                        runOnUiThread(() -> {
+                            if (devicesCount < 2) {
+                                updateStatus("Вы один в комнате. Ожидание собеседника...");
+                            } else {
+                                updateStatus("Собеседник подключился! Можно создавать Оффер.");
+                            }
+                        });
+                        return;
+                    }
+
+                    if ("sdp".equals(msgType)) {
+                        String remoteSdpText = json.getString("sdp");
+                        SessionDescription localDesc = peerConnection.getLocalDescription();
+                        if (localDesc != null && sanitizeSdp(remoteSdpText).equals(sanitizeSdp(localDesc.description))) {
+                            return;
                         }
-                    }, desc);
+                        runOnUiThread(() -> {
+                            etSdpExchange.setText(remoteSdpText);
+                            btnAcceptSdp.performClick();
+                        });
+                    }
+                } catch (Exception e) {
+                    Log.e("WebRTC_WS", "Ошибка авто-рукопожатия", e);
                 }
-            }, constraints);
+            }
+
         });
+    }
 
-        btnAcceptSdp.setOnClickListener(v -> {
-            Log.d("WebRTC_Test", "Кнопка 'Принять чужой код' нажата!");
+    private void sendSdpToNetwork(String sdpDescription) {
+        try {
+            org.json.JSONObject json = new org.json.JSONObject();
+            json.put("type", "sdp");
+            json.put("room", ROOM_ID);
+            json.put("sdp", sdpDescription);
+            if (webSocket != null) webSocket.send(json.toString());
+        } catch (Exception e) {
+            Log.e("WebRTC_WS", "Ошибка отправки SDP", e);
+        }
+    }
+    private void createOffer() {
+        if (peerConnection == null) return;
+        updateStatus("Генерация кода (STUN)...");
 
-            if (peerConnection == null) return;
-            String remoteSdpText = etSdpExchange.getText().toString().trim();
-            if (remoteSdpText.isEmpty()) return;
+        DataChannel.Init init = new DataChannel.Init();
+        dataChannel = peerConnection.createDataChannel("sendDataChannel", init);
+        setupDataChannelCallbacks();
 
-            if (dataChannel == null) {
-                DataChannel.Init init = new DataChannel.Init();
-                dataChannel = peerConnection.createDataChannel("sendDataChannel", init);
-                setupDataChannelCallbacks();
-                Log.d("WebRTC_Test", "Локальный каркас DataChannel инициализирован для Получателя.");
-            }
+        MediaConstraints constraints = new MediaConstraints();
+        constraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveAudio", "false"));
+        constraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveVideo", "false"));
 
-            // Пропускаем текст через наш умный фильтр RFC
-            String finalSdp = sanitizeSdp(remoteSdpText);
-
-            if (finalSdp.isEmpty() || !finalSdp.startsWith("v=0")) {
-                Log.e("WebRTC_Test", "Ошибка: После фильтрации текст пуст или не начинается с v=0!");
-                runOnUiThread(() -> updateStatus("Ошибка: Некорректный или обрезанный код SDP"));
-                return;
-            }
-
-            // Автоматически определяем тип по содержимому чистой строки
-            SessionDescription.Type type;
-            if (finalSdp.toLowerCase().contains("setup:actpass")) {
-                type = SessionDescription.Type.OFFER;
-            } else {
-                type = SessionDescription.Type.ANSWER;
-            }
-
-            Log.d("WebRTC_Test", "Передаем отфильтрованный SDP. Тип: " + type.toString());
-            Log.d("WebRTC_Test", "Финальный текст для ядра WebRTC:\n" + finalSdp);
-
-            try {
-                SessionDescription remoteDesc = new SessionDescription(type, finalSdp);
-
-                peerConnection.setRemoteDescription(new SdpObserverAdapter() {
+        peerConnection.createOffer(new SdpObserverAdapter() {
+            @Override
+            public void onCreateSuccess(SessionDescription desc) {
+                peerConnection.setLocalDescription(new SdpObserverAdapter() {
                     @Override
                     public void onSetSuccess() {
-                        Log.d("WebRTC_Test", "setRemoteDescription выполнен УСПЕШНО!");
-                        if (type == SessionDescription.Type.OFFER) {
-                            createAnswerAndSet();
-                        } else {
-                            runOnUiThread(() -> updateStatus("Ответ успешно принят! Соединяемся..."));
-                        }
+                        runOnUiThread(() -> {
+                            etSdpExchange.setText(desc.description);
+                            updateStatus("Базовый код готов! Пересылаем...");
+                        });
+                        sendSdpToNetwork(desc.description); // <--- Автоматически улетает в сеть
                     }
-
-                    @Override
-                    public void onSetFailure(String error) {
-                        Log.e("WebRTC_Test", "Ошибка WebRTC ядра: " + error);
-                        runOnUiThread(() -> updateStatus("Ошибка WebRTC: " + error));
-                    }
-                }, remoteDesc);
-
-            } catch (Exception e) {
-                Log.e("WebRTC_Test", "Критическая ошибка Java", e);
-                runOnUiThread(() -> updateStatus("Ошибка: " + e.getMessage()));
+                }, desc);
             }
-        });
-
-        // Кнопка 3: Отправка сообщений
-        btnSend.setOnClickListener(v -> sendMessage());
+        }, constraints);
     }
 
     private void createAnswerAndSet() {
         MediaConstraints constraints = new MediaConstraints();
-        // Явно прописываем false, чтобы C++ не искал кодеки микрофона/камеры
         constraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveAudio", "false"));
         constraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveVideo", "false"));
 
@@ -213,23 +227,47 @@ public class MainActivity extends AppCompatActivity {
                     public void onSetSuccess() {
                         runOnUiThread(() -> {
                             etSdpExchange.setText(desc.description);
-                            updateStatus("Ответ готов! Перенесите его на Samsung.");
+                            updateStatus("Ответ готов! Пересылаем обратно...");
                         });
+                        sendSdpToNetwork(desc.description); // <--- Автоматически улетает в сеть
                     }
                 }, desc);
-            }
-
-            @Override
-            public void onCreateFailure(String error) {
-                runOnUiThread(() -> updateStatus("Ошибка создания Answer: " + error));
             }
         }, constraints);
     }
 
+    private void acceptSdpFromEditText() {
+        if (peerConnection == null) return;
+        String remoteSdpText = etSdpExchange.getText().toString().trim();
+        if (remoteSdpText.isEmpty()) return;
+
+        String finalSdp = sanitizeSdp(remoteSdpText);
+        if (finalSdp.isEmpty() || !finalSdp.startsWith("v=0")) return;
+
+        // Исправлено: Определение типа на основе наличия локального описания
+        SessionDescription.Type type = (peerConnection.getLocalDescription() == null)
+                ? SessionDescription.Type.OFFER
+                : SessionDescription.Type.ANSWER;
+
+        try {
+            SessionDescription remoteDesc = new SessionDescription(type, finalSdp);
+            peerConnection.setRemoteDescription(new SdpObserverAdapter() {
+                @Override
+                public void onSetSuccess() {
+                    if (type == SessionDescription.Type.OFFER) {
+                        createAnswerAndSet();
+                    } else {
+                        updateStatus("Ответ успешно принят! Соединяемся...");
+                    }
+                }
+            }, remoteDesc);
+        } catch (Exception e) {
+            Log.e("WebRTC_Test", "Ошибка Java при установке описания", e);
+        }
+    }
 
     private void setupDataChannelCallbacks() {
         if (dataChannel == null) return;
-
         dataChannel.registerObserver(new DataChannel.Observer() {
             @Override public void onBufferedAmountChange(long l) {}
             @Override public void onStateChange() {}
@@ -247,36 +285,40 @@ public class MainActivity extends AppCompatActivity {
 
     private void sendMessage() {
         String msg = etMessage.getText().toString().trim();
-        if (!msg.isEmpty() && dataChannel != null && dataChannel.state() == DataChannel.State.OPEN) {ByteBuffer buffer = ByteBuffer.wrap(msg.getBytes(StandardCharsets.UTF_8));dataChannel.send(new DataChannel.Buffer(buffer, false));tvChatHistory.append("Вы: " + msg + "\n");etMessage.setText("");}}private void updateStatus(String status) {runOnUiThread(() -> tvStatus.setText("Статус: " + status));}private static class SdpObserverAdapter implements SdpObserver {@Override public void onCreateSuccess(SessionDescription desc) {}@Override public void onSetSuccess() {}@Override public void onCreateFailure(String error) {}@Override public void onSetFailure(String error) {}}
+        if (!msg.isEmpty() && dataChannel != null && dataChannel.state() == DataChannel.State.OPEN) {
+            ByteBuffer buffer = ByteBuffer.wrap(msg.getBytes(StandardCharsets.UTF_8));
+            dataChannel.send(new DataChannel.Buffer(buffer, false));
+            tvChatHistory.append("Вы: " + msg + "\n");
+            etMessage.setText("");
+        }
+    }
+
+    private void updateStatus(String status) {
+        runOnUiThread(() -> tvStatus.setText("Статус: " + status));
+    }
+
     private String sanitizeSdp(String rawText) {
         if (rawText == null) return "";
         StringBuilder sb = new StringBuilder();
-
-        // Универсальное разделение по любым признакам конца строки
         String[] lines = rawText.split("\\r?\\n");
-
         for (String line : lines) {
             String trimmed = line.trim();
-
-            // Очистка от возможных лог-префиксов Android Studio
             if (trimmed.contains("WebRTC_Test") && trimmed.contains(" : ")) {
                 trimmed = trimmed.substring(trimmed.indexOf(" : ") + 3).trim();
             }
-
-            // Оставляем только строки стандарта SDP: "буква=значение"
             if (trimmed.matches("^[a-z]=[\\s\\S]*")) {
-                sb.append(trimmed).append("\r\n"); // Железно ставим CRLF в конце строки
+                sb.append(trimmed).append("\r\n");
             }
         }
-
-        // ВАЖНО: стандарт WebRTC требует, чтобы весь блок SDP завершался финальным CRLF
         String result = sb.toString();
-        if (!result.endsWith("\r\n")) {
-            result += "\r\n";
-        }
-
+        if (!result.endsWith("\r\n")) result += "\r\n";
         return result;
     }
 
-
+    private static class SdpObserverAdapter implements SdpObserver {
+        @Override public void onCreateSuccess(SessionDescription desc) {}
+        @Override public void onSetSuccess() {}
+        @Override public void onCreateFailure(String error) {}
+        @Override public void onSetFailure(String error) {}
+    }
 }
