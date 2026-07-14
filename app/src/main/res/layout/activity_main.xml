@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="#FFFFFF">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <!-- Кнопка 1: Крупная и полностью доступная -->
+        <Button
+            android:id="@+id/btnCreateOffer"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:text="1. Создать Оффер"
+            android:backgroundTint="#673AB7"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp" />
+
+        <!-- Кнопка 2 -->
+        <Button
+            android:id="@+id/btnAcceptSdp"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:text="2. Принять чужой Код"
+            android:backgroundTint="#673AB7"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:layout_marginTop="12dp" />
+
+        <!-- Статус подключения -->
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Статус: Ожидание действий"
+            android:textColor="#FF5722"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:gravity="center" />
+
+        <!-- Поле обмена -->
+        <EditText
+            android:id="@+id/etSdpExchange"
+            android:layout_width="match_parent"
+            android:layout_height="150dp"
+            android:layout_marginTop="12dp"
+            android:background="#EFEFEF"
+            android:gravity="top"
+            android:hint="Вставьте код собеседника сюда..."
+            android:inputType="textMultiLine"
+            android:padding="12dp"
+            android:scrollbars="vertical"
+            android:textSize="14sp"
+            android:textColor="#212121" />
+
+        <!-- Лог чата -->
+        <TextView
+            android:id="@+id/tvChatHistory"
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:layout_marginTop="16dp"
+            android:background="#FAFFAF"
+            android:padding="8dp"
+            android:scrollbars="vertical"
+            android:text="История сообщений:\n"
+            android:textColor="#333333"
+            android:textSize="16sp" />
+
+        <!-- Панель ввода -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="16dp">
+
+            <EditText
+                android:id="@+id/etMessage"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:hint="Сообщение..."
+                android:textColor="#212121" />
+
+            <Button
+                android:id="@+id/btnSend"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Послать"
+                android:backgroundTint="#4CAF50"
+                android:textColor="#FFFFFF"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>
