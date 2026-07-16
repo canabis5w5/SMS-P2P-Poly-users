@@ -48,16 +48,21 @@
         <EditText
             android:id="@+id/etSdpExchange"
             android:layout_width="match_parent"
-            android:layout_height="150dp"
-            android:layout_marginTop="12dp"
-            android:background="#EFEFEF"
-            android:gravity="top"
-            android:hint="Вставьте код собеседника сюда..."
-            android:inputType="textMultiLine"
-            android:padding="12dp"
-            android:scrollbars="vertical"
-            android:textSize="14sp"
-            android:textColor="#212121" />
+            android:layout_height="wrap_content"
+            android:hint="Сюда вводите 6-значный код комнаты..."
+            android:inputType="textLongMessage"
+            android:drawableEnd="@android:drawable/ic_menu_close_clear_cancel"
+            android:drawablePadding="8dp" />
+
+        <EditText
+            android:id="@+id/etStunServer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="STUN-сервер (оставьте пустым для локальной сети Wi-Fi)..."
+            android:text="stun:ipcamssss.online:3478"
+            android:inputType="textUri"
+            android:drawableEnd="@android:drawable/ic_menu_close_clear_cancel"
+            android:drawablePadding="8dp" />
 
         <!-- Лог чата -->
         <TextView
