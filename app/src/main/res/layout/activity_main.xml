@@ -16,7 +16,7 @@
             android:id="@+id/btnOpenSettings"
             android:layout_width="match_parent"
             android:layout_height="60dp"
-            android:text="⚙ Настройки подключения"
+            android:text="@string/settings_title"
             android:backgroundTint="#795548"
             android:textColor="#FFFFFF"
             android:textSize="16sp"
@@ -27,7 +27,7 @@
             android:id="@+id/btnCreateOffer"
             android:layout_width="match_parent"
             android:layout_height="60dp"
-            android:text="1. Создать новую комнату"
+            android:text="@string/create_new_room"
             android:backgroundTint="#673AB7"
             android:textColor="#FFFFFF"
             android:textSize="16sp" />
@@ -37,7 +37,7 @@
             android:id="@+id/btnAcceptSdp"
             android:layout_width="match_parent"
             android:layout_height="60dp"
-            android:text="2. Войти по коду друга"
+            android:text="@string/enter_on_pin_by"
             android:backgroundTint="#673AB7"
             android:textColor="#FFFFFF"
             android:textSize="16sp"
@@ -49,7 +49,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Статус: Ожидание действий"
+            android:text="@string/status_wait_doing"
             android:textColor="#FF5722"
             android:textSize="14sp"
             android:textStyle="bold"
@@ -60,13 +60,12 @@
             android:id="@+id/etSdpExchange"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Сюда вводите 6-значный код комнаты..."
+            android:hint="@string/pin_code"
             android:inputType="textLongMessage"
             android:drawableEnd="@android:drawable/ic_menu_close_clear_cancel"
+            android:importantForAutofill="no"
             android:drawablePadding="8dp"
             android:layout_marginTop="12dp" />
-
-        <!-- ИСПРАВЛЕНО: Элемент etStunServer полностью удален из этого XML, так как он теперь живет в настройках -->
 
         <!-- Лог чата -->
         <TextView
@@ -77,7 +76,7 @@
             android:background="#FAFFAF"
             android:padding="8dp"
             android:scrollbars="vertical"
-            android:text="История сообщений:\n"
+            android:text="@string/history_sms"
             android:textColor="#333333"
             android:textSize="16sp" />
 
@@ -93,14 +92,15 @@
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:hint="Сообщение..."
+                android:hint="@string/sms"
+                android:importantForAutofill="no"
                 android:textColor="#212121" />
 
             <Button
                 android:id="@+id/btnSend"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Послать"
+                android:text="@string/sms_push"
                 android:backgroundTint="#4CAF50"
                 android:textColor="#FFFFFF"
                 android:layout_marginStart="8dp" />

@@ -33,6 +33,12 @@ public class SettingsActivity extends AppCompatActivity {
             String wsUrl = etSettingsWs.getText().toString().trim();
             String stunUrl = etSettingsStun.getText().toString().trim();
 
+            // ЗАЩИТА: Проверяем на пустоту ДО добавления префикса ws://
+            if (wsUrl.isEmpty()) {
+                etSettingsWs.setError("Адрес сервера не может быть пустым!");
+                return;
+            }
+
             if (!wsUrl.startsWith("ws://") && !wsUrl.startsWith("wss://")) {
                 wsUrl = "ws://" + wsUrl;
             }
