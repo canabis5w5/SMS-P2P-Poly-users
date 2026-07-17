@@ -1,6 +1,8 @@
 package com.example.smsp2p;
 
 import android.annotation.SuppressLint;
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.Button;
@@ -25,7 +27,7 @@ public class MainActivity extends AppCompatActivity {
 
     private EditText etSdpExchange, etMessage, etStunServer;
     private TextView tvStatus, tvChatHistory;
-    private Button btnCreateOffer, btnAcceptSdp, btnSend;
+    private Button btnCreateOffer, btnAcceptSdp, btnSend, btnOpenSettings;
 
     private PeerConnectionFactory factory;
     private PeerConnection peerConnection;
@@ -37,21 +39,27 @@ public class MainActivity extends AppCompatActivity {
 
     private boolean isInitiator = false;
     private String currentRoomId = "";
-    private final String WS_SERVER_URL = "ws://ipcamssss.online:8888";
+    private SharedPreferences prefs;
+    private String wsServerUrl = "";
+
     @SuppressLint("ClickableViewAccessibility")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        prefs = getSharedPreferences("SMSP2P_PREFS", Context.MODE_PRIVATE);
+        wsServerUrl = prefs.getString("ws_url", "ws://ipcamssss.online:8888");
+
         etSdpExchange = findViewById(R.id.etSdpExchange);
         etMessage = findViewById(R.id.etMessage);
-        etStunServer = findViewById(R.id.etStunServer);
+
         tvStatus = findViewById(R.id.tvStatus);
         tvChatHistory = findViewById(R.id.tvChatHistory);
         btnCreateOffer = findViewById(R.id.btnCreateOffer);
         btnAcceptSdp = findViewById(R.id.btnAcceptSdp);
         btnSend = findViewById(R.id.btnSend);
+        Button btnOpenSettings = findViewById(R.id.btnOpenSettings);
 
         // Настройка названий кнопок для динамических комнат
         btnCreateOffer.setText("1. Создать новую комнату");
@@ -73,17 +81,10 @@ public class MainActivity extends AppCompatActivity {
         btnAcceptSdp.setOnClickListener(v -> actionJoinRoomByCode());
         btnSend.setOnClickListener(v -> sendMessage());
 
-        // ОЧИСТКА ПОЛЯ STUN
-        etStunServer.setOnTouchListener((v, event) -> {
-            if (event.getAction() == android.view.MotionEvent.ACTION_UP) {
-                // Проверяем, что нажатие произошло именно в области правой иконки
-                if (event.getRawX() >= (etStunServer.getRight() - etStunServer.getCompoundDrawables()[2].getBounds().width())) {
-                    etStunServer.setText(""); // Очищаем поле
-                    updateStatus("Поле STUN очищено. Локальный режим.");
-                    return true;
-                }
-            }
-            return false;
+        // КНОПКА НАСТРОЕК
+        btnOpenSettings.setOnClickListener(v -> {
+            android.content.Intent intent = new android.content.Intent(this, SettingsActivity.class);
+            startActivity(intent);
         });
 
         // ОЧИСТКИ ПОЛЯ SDP:
@@ -98,13 +99,48 @@ public class MainActivity extends AppCompatActivity {
             }
             return false;
         });
+    }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+
+        // Перечитываем актуальные настройки из памяти после возвращения с экрана настроек
+        if (prefs != null) {
+            wsServerUrl = prefs.getString("ws_url", "ws://ipcamssss.online:8888");
+        }
+
+        // Закрываем старый сокет, если он случайно остался открытым
+        if (webSocket != null) {
+            try {
+                webSocket.close(1000, "Переподключение");
+            } catch (Exception e) {
+                Log.e("WebRTC_WS", "Ошибка закрытия старого сокета", e);
+            }
+        }
+
+        // Запускаем подключение с новым, исправленным адресом сервера
         initWebSocket();
     }
 
     private void initWebSocket() {
+        // Проверка 1: Строка не должна быть пустой
+        if (wsServerUrl == null || wsServerUrl.trim().isEmpty()) {
+            updateStatus("Ошибка: адрес сервера пуст. Задайте его в Настройках.");
+            return;
+        }
+
+        // Проверка 2: Безопасный разбор URL. Если в строке осталась только схема (например, "ws://"), блокируем запуск
+        String checkUrl = wsServerUrl.replace("ws://", "").replace("wss://", "").trim();
+        if (checkUrl.isEmpty()) {
+            updateStatus("Ошибка: введите адрес хоста в Настройках.");
+            return;
+        }
+
         client = new OkHttpClient();
-        Request request = new Request.Builder().url(WS_SERVER_URL).build();
+
+        try{
+        Request request = new Request.Builder().url(wsServerUrl).build();
 
         webSocket = client.newWebSocket(request, new WebSocketListener() {
             @Override
@@ -156,6 +192,11 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+    } catch (IllegalArgumentException e) {
+        // ИСПРАВЛЕНО: Если OkHttp выкинет ошибку хоста, приложение НЕ упадет, а мягко выведет статус
+        Log.e("WebRTC_WS", "Критическая ошибка разбора URL: " + wsServerUrl, e);
+        updateStatus("Неверный адрес сервера! Измените в Настройках.");
+    }
     }
 
     // Метод для динамического создания PeerConnection в зависимости от текста в etStunServer
@@ -165,7 +206,8 @@ public class MainActivity extends AppCompatActivity {
         }
 
         List<PeerConnection.IceServer> iceServers = new ArrayList<>();
-        String stunUrl = etStunServer.getText().toString().trim();
+        String stunUrl = prefs.getString("stun_url", "stun:ipcamssss.online:3478");
+        //String stunUrl = etStunServer.getText().toString().trim();
 
         // Если поле не пустое, динамически подключаем указанный STUN-сервер
         if (!stunUrl.isEmpty()) {

@@ -11,12 +11,23 @@
         android:orientation="vertical"
         android:padding="24dp">
 
+        <!-- Кнопка 3: Настройки вынесена наверх с отступом -->
+        <Button
+            android:id="@+id/btnOpenSettings"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:text="⚙ Настройки подключения"
+            android:backgroundTint="#795548"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:layout_marginBottom="24dp" />
+
         <!-- Кнопка 1: Крупная и полностью доступная -->
         <Button
             android:id="@+id/btnCreateOffer"
             android:layout_width="match_parent"
             android:layout_height="60dp"
-            android:text="1. Создать Оффер"
+            android:text="1. Создать новую комнату"
             android:backgroundTint="#673AB7"
             android:textColor="#FFFFFF"
             android:textSize="16sp" />
@@ -26,7 +37,7 @@
             android:id="@+id/btnAcceptSdp"
             android:layout_width="match_parent"
             android:layout_height="60dp"
-            android:text="2. Принять чужой Код"
+            android:text="2. Войти по коду друга"
             android:backgroundTint="#673AB7"
             android:textColor="#FFFFFF"
             android:textSize="16sp"
@@ -44,7 +55,7 @@
             android:textStyle="bold"
             android:gravity="center" />
 
-        <!-- Поле обмена -->
+        <!-- Поле обмена кодами комнаты -->
         <EditText
             android:id="@+id/etSdpExchange"
             android:layout_width="match_parent"
@@ -52,24 +63,17 @@
             android:hint="Сюда вводите 6-значный код комнаты..."
             android:inputType="textLongMessage"
             android:drawableEnd="@android:drawable/ic_menu_close_clear_cancel"
-            android:drawablePadding="8dp" />
+            android:drawablePadding="8dp"
+            android:layout_marginTop="12dp" />
 
-        <EditText
-            android:id="@+id/etStunServer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="STUN-сервер (оставьте пустым для локальной сети Wi-Fi)..."
-            android:text="stun:ipcamssss.online:3478"
-            android:inputType="textUri"
-            android:drawableEnd="@android:drawable/ic_menu_close_clear_cancel"
-            android:drawablePadding="8dp" />
+        <!-- ИСПРАВЛЕНО: Элемент etStunServer полностью удален из этого XML, так как он теперь живет в настройках -->
 
         <!-- Лог чата -->
         <TextView
             android:id="@+id/tvChatHistory"
             android:layout_width="match_parent"
             android:layout_height="200dp"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="24dp"
             android:background="#FAFFAF"
             android:padding="8dp"
             android:scrollbars="vertical"
@@ -77,7 +81,7 @@
             android:textColor="#333333"
             android:textSize="16sp" />
 
-        <!-- Панель ввода -->
+        <!-- Панель ввода сообщений -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
