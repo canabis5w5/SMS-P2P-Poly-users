@@ -16,7 +16,23 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:text="@string/user_nikname" />
+
+    <EditText
+        android:id="@+id/etUserName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/enter_you_nikname"
+        android:inputType="textPersonName"
+        android:maxLines="1"
+        android:layout_marginBottom="16dp"
+        android:importantForAutofill="no" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
         android:text="@string/ws_server_label" />
+
     <EditText
         android:id="@+id/etSettingsWs"
         android:layout_width="match_parent"
@@ -30,14 +46,24 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/stun_server_label" />
+
     <EditText
         android:id="@+id/etSettingsStun"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:hint="@string/stun_server_example"
         android:inputType="textUri"
-        android:layout_marginBottom="24dp"
+        android:layout_marginBottom="4dp"
         android:importantForAutofill="no" />
+
+    <!-- Краткое и емкое пояснение для STUN-режима -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/about_stun"
+        android:textSize="12sp"
+        android:textColor="#757575"
+        android:layout_marginBottom="24dp" />
 
     <Button
         android:id="@+id/btnSaveSettings"

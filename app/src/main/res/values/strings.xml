@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">SMS P2P</string>
+    <string name="app_name">SMS P2P GROUP</string>
     <string name="settings_title">⚙ Настройки подключения</string>
     <string name="action_settings">Настройки</string>
     <string name="ws_server_label">Адрес WebSocket сервера:</string>
@@ -10,8 +10,11 @@
     <string name="create_new_room">1. Создать новую комнату</string>
     <string name="enter_on_pin_by">2. Войти по коду друга</string>
     <string name="status_wait_doing">Статус: Ожидание действий</string>
-    <string name="pin_code">Сюда вводите 6-значный код комнаты...</string>
+    <string name="pin_code">Сюда вводите 6-значный код комнаты…</string>
     <string name="history_sms">История сообщений:\n</string>
-    <string name="sms">Сообщение...</string>
+    <string name="sms">Сообщение…</string>
     <string name="sms_push">Послать</string>
+    <string name="user_nikname">Ваш никнейм:</string>
+    <string name="enter_you_nikname">Введите ваш никнейм</string>
+    <string name="about_stun">Для работы внутри одной локальной сети (Wi-Fi) STUN-сервер не требуется (оставьте поле пустым). Для связи через Интернет указание STUN обязательно.</string>
 </resources>
