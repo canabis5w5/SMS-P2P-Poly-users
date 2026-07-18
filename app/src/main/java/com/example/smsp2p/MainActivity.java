@@ -2,6 +2,7 @@ package com.example.smsp2p;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
@@ -12,6 +13,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import org.webrtc.*;
 
+import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -27,6 +29,8 @@ import okhttp3.WebSocketListener;
 
 public class MainActivity extends AppCompatActivity {
 
+    private P2PFileManager fileManager;
+
     private static final String TAG = "WebRTC_P2P";
 
     private EditText etSdpExchange, etMessage;
@@ -37,6 +41,8 @@ public class MainActivity extends AppCompatActivity {
     // Групповые коллекции для хранения множественных соединений
     private final HashMap<String, PeerConnection> peerConnections = new HashMap<>();
     private final HashMap<String, DataChannel> dataChannels = new HashMap<>();
+
+    private DataChannel activeDataChannel = null;
 
     private String myUserName = "Гость";
 
@@ -68,6 +74,8 @@ public class MainActivity extends AppCompatActivity {
         Button btnSend = findViewById(R.id.btnSend);
         Button btnOpenSettings = findViewById(R.id.btnOpenSettings);
 
+        Button btnAttachFile = findViewById(R.id.btnAttachFile);
+
         tvChatHistory.setMovementMethod(new android.text.method.ScrollingMovementMethod());
         tvChatHistory.setOnTouchListener((v, event) -> {
             if (tvChatHistory.getLayout() != null) {
@@ -76,9 +84,17 @@ public class MainActivity extends AppCompatActivity {
             return false;
         });
 
+        btnAttachFile.setOnClickListener(v -> {
+            // Вызывает встроенный проводник Android для выбора любого типа файлов
+            filePickerLauncher.launch("*/*");
+        });
+
         btnCreateOffer.setText("1. Создать новую комнату");
         btnAcceptSdp.setText("2. Войти по коду друга");
         etSdpExchange.setHint("Сюда вводите 6-значный код комнаты...");
+
+        // Запрашиваем права на запись файлов сразу при входе в приложение
+        checkAndRequestStoragePermissions();
 
         Log.d(TAG, "[MAIN] Инициализация ядра WebRTC библиотеки...");
         PeerConnectionFactory.InitializationOptions initOptions = PeerConnectionFactory.InitializationOptions
@@ -108,6 +124,22 @@ public class MainActivity extends AppCompatActivity {
             }
             return false;
         });
+
+        fileManager = new P2PFileManager(this);
+
+        Intent serviceIntent = new Intent(this, P2PService.class);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent); // Для Android 8.0 и новее
+        } else {
+            startService(serviceIntent); // Для старых версий
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            if (checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
+            }
+        }
+
     }
 
     @Override
@@ -126,6 +158,85 @@ public class MainActivity extends AppCompatActivity {
             initWebSocket();
         }
     }
+
+    // Лаунчер для открытия настроек спец-доступа на Android 11+
+    private final androidx.activity.result.ActivityResultLauncher<Intent> manageStorageLauncher =
+            registerForActivityResult(new androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+                    result -> {
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                            if (android.os.Environment.isExternalStorageManager()) {
+                                Log.d("PERMISSIONS", "Доступ ко всем файлам получен!");
+                            } else {
+                                tvChatHistory.append("Система: Доступ к памяти отклонен. Файлы могут не сохраняться.\n");
+                            }
+                        }
+                    });
+
+    // Метод проверки и запроса прав, который мы вызовем при старте
+    private void checkAndRequestStoragePermissions() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            // Логика для Android 11 (API 30) и новее (ваш Samsung)
+            if (!android.os.Environment.isExternalStorageManager()) {
+                try {
+                    Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                    intent.addCategory("android.intent.category.DEFAULT");
+                    intent.setData(android.net.Uri.parse(String.format("package:%s", getPackageName())));
+                    manageStorageLauncher.launch(intent);
+                } catch (Exception e) {
+                    Intent intent = new Intent();
+                    intent.setAction(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                    manageStorageLauncher.launch(intent);
+                }
+            }
+        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            // Логика для старых Android (API 23 - 29) и эмуляторов
+            if (checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{
+                        android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                        android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+                }, 100);
+            }
+        }
+    }
+
+
+    private final androidx.activity.result.ActivityResultLauncher<String> filePickerLauncher =
+            registerForActivityResult(new androidx.activity.result.contract.ActivityResultContracts.GetContent(),
+                    uri -> {
+                        if (uri != null) {
+                            if (activeDataChannel == null || activeDataChannel.state() != DataChannel.State.OPEN) {
+                                android.widget.Toast.makeText(this, "Нет активного P2P соединения для отправки файла", android.widget.Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+
+                            // ШАГ 1: Только запрашиваем разрешение у собеседника (шлем file_meta)
+                            fileManager.requestSendFile(uri, activeDataChannel, currentRoomId, new P2PFileManager.FileTransferListener() {
+                                @Override
+                                public void onMetadataReceived(String fileId, String fileName, long fileSize) {}
+
+                                @Override
+                                public void onProgress(String fileId, int progress) {}
+
+                                @Override
+                                public void onTransferComplete(String fileId, File file) {}
+
+                                @Override
+                                public void onError(String fileId, String errorReason) {
+                                    runOnUiThread(() -> {
+                                        tvChatHistory.append("Система: Ошибка инициализации файла: " + errorReason + "\n");
+                                        scrollChatToBottom();
+                                    });
+                                }
+                            });
+
+                            runOnUiThread(() -> {
+                                tvChatHistory.append("Система: Запрос на отправку файла отправлен. Ожидание ответа...\n");
+                                scrollChatToBottom();
+                            });
+                        }
+                    });
+
 
 
     private void actionCreateNewRoom() {
@@ -352,46 +463,182 @@ public class MainActivity extends AppCompatActivity {
             public void onStateChange() {
                 Log.d(TAG, "[DataChannel] Статус канала с " + remoteClientId + " изменился на: " + channel.state().name());
                 if (channel.state() == DataChannel.State.OPEN) {
+                    activeDataChannel = channel; // <--- ЗАПОМИНАЕМ ОТКРЫТЫЙ КАНАЛ
                     runOnUiThread(() -> updateStatus("P2P канал связи активен."));
+                } else if (channel.state() == DataChannel.State.CLOSED) {
+                    if (activeDataChannel == channel) {
+                        activeDataChannel = null; // <--- СБРАСЫВАЕМ ПРИ ЗАКРЫТИИ
+                    }
                 }
             }
+
 
             @Override
             public void onMessage(DataChannel.Buffer buffer) {
                 Log.d(TAG, "[DataChannel_EVENT] <<< ПОЛУЧЕН ПРЯМОЙ UDP-ПАКЕТ ОТ: " + remoteClientId);
-                ByteBuffer data = buffer.data;
-                byte[] bytes = new byte[data.remaining()];
-                data.get(bytes);
 
-                try {
-                    // 1. Расшифровываем бинарный пакет в исходную JSON-строку
-                    String decryptedJson = CryptoHelper.decrypt(bytes, currentRoomId);
+                if (buffer.binary) {
+                    // --- 1. ОБРАБОТКА БИНАРНЫХ ДАННЫХ (ЧАНКИ ФАЙЛА) ---
+                    fileManager.onChunkReceived(buffer, new P2PFileManager.FileTransferListener() {
+                        @Override
+                        public void onMetadataReceived(String fileId, String fileName, long fileSize) {}
 
-                    // 2. Парсим внутренний P2P JSON, отправленный собеседником
-                    org.json.JSONObject packet = new org.json.JSONObject(decryptedJson);
-                    String senderName = packet.getString("senderName"); // Человеческое имя автора
-                    String textMessage = packet.getString("text");       // Текст его сообщения
+                        @Override
+                        public void onProgress(String fileId, int progress) {
+                            runOnUiThread(() -> {
+                                Log.d(TAG, "[File_Transfer] Получено байт файла: " + progress + "%");
+                            });
+                        }
 
-                    // 3. Выводим красивое человеческое имя в UI историю чата
-                    runOnUiThread(() -> {
-                        tvChatHistory.append(senderName + ": " + textMessage + "\n");
-                        scrollChatToBottom();
+                        @Override
+                        public void onTransferComplete(String fileId, File file) {
+                            runOnUiThread(() -> {
+                                tvChatHistory.append("Система: Файл успешно получен и сохранен в Загрузки: " + file.getName() + "\n");
+                                scrollChatToBottom();
+                            });
+                        }
+
+                        @Override
+                        public void onError(String fileId, String errorReason) {
+                            runOnUiThread(() -> {
+                                tvChatHistory.append("Система: Ошибка при приеме файла: " + errorReason + "\n");
+                                scrollChatToBottom();
+                            });
+                        }
                     });
 
-                } catch (org.json.JSONException e) {
-                    Log.e(TAG, "[P2P_PARSER] Ошибка структуры JSON внутри пакета от " + remoteClientId, e);
-                    runOnUiThread(() -> {
-                        tvChatHistory.append("Система: Получено некорректное сообщение от " + remoteClientId + ".\n");
-                        scrollChatToBottom();
-                    });
-                } catch (Exception e) {
-                    Log.e(TAG, "[Crypto] Критическая ошибка дешифрации пакета от " + remoteClientId, e);
-                    runOnUiThread(() -> {
-                        tvChatHistory.append("Система: Ошибка дешифрации приватного пакета.\n");
-                        scrollChatToBottom();
-                    });
+                } else {
+                    // --- 2. ОБРАБОТКА ТЕКСТОВЫХ ДАННЫХ (JSON ЧАТА, ЗАПРОСЫ И ОТВЕТЫ) ---
+                    ByteBuffer data = buffer.data;
+                    byte[] bytes = new byte[data.remaining()];
+                    data.get(bytes);
+
+                    try {
+                        // Разшифровываем пакет
+                        String decryptedJson = CryptoHelper.decrypt(bytes, currentRoomId);
+                        org.json.JSONObject packet = new org.json.JSONObject(decryptedJson);
+                        String msgType = packet.optString("type");
+
+                        if ("file_meta".equals(msgType)) {
+                            // ПОЛУЧАТЕЛЬ: К нам пришел запрос на прием файла
+                            String fileName = packet.getString("fileName");
+                            long fileSize = packet.getLong("fileSize");
+
+                            runOnUiThread(() -> {
+                                new android.app.AlertDialog.Builder(MainActivity.this)
+                                        .setTitle("Принять файл?")
+                                        .setMessage("Собеседник хочет отправить вам файл:\n"
+                                                + fileName + " (" + (fileSize / 1024) + " КБ)")
+                                        .setPositiveButton("Принять", (dialog, which) -> {
+                                            try {
+                                                // Отправляем зашифрованный ответ-согласие 'file_accept'
+                                                org.json.JSONObject acceptJson = new org.json.JSONObject();
+                                                acceptJson.put("type", "file_accept");
+
+                                                byte[] encrypted = CryptoHelper.encrypt(acceptJson.toString(), currentRoomId);
+                                                activeDataChannel.send(new DataChannel.Buffer(ByteBuffer.wrap(encrypted), false));
+
+                                                // Готовим буфер менеджера к приему байт
+                                                fileManager.registerIncomingFile(packet, new P2PFileManager.FileTransferListener() {
+                                                    @Override
+                                                    public void onMetadataReceived(String fileId, String fileName1, long fileSize1) {
+                                                        tvChatHistory.append("Система: Вы приняли файл. Ожидание скачивания...\n");
+                                                        scrollChatToBottom();
+                                                    }
+                                                    @Override
+                                                    public void onProgress(String fileId, int progress) {}
+                                                    @Override
+                                                    public void onTransferComplete(String fileId, File file) {}
+                                                    @Override
+                                                    public void onError(String fileId, String errorReason) {}
+                                                });
+                                            } catch (Exception e) { e.printStackTrace(); }
+                                        })
+                                        .setNegativeButton("Отклонить", (dialog, which) -> {
+                                            try {
+                                                // Отправляем зашифрованный ответ-отказ 'file_reject'
+                                                org.json.JSONObject rejectJson = new org.json.JSONObject();
+                                                rejectJson.put("type", "file_reject");
+
+                                                byte[] encrypted = CryptoHelper.encrypt(rejectJson.toString(), currentRoomId);
+                                                activeDataChannel.send(new DataChannel.Buffer(ByteBuffer.wrap(encrypted), false));
+
+                                                tvChatHistory.append("Система: Вы отклонили файл.\n");
+                                                scrollChatToBottom();
+                                            } catch (Exception e) { e.printStackTrace(); }
+                                        })
+                                        .setCancelable(false)
+                                        .show();
+                            });
+
+                        } else if ("file_accept".equals(msgType)) {
+                            // ОТПРАВИТЕЛЬ: Собеседник нажал «Принять» -> Начинаем стримить байты
+                            runOnUiThread(() -> {
+                                tvChatHistory.append("Система: Собеседник принял файл. Отправка данных...\n");
+                                scrollChatToBottom();
+                            });
+
+                            fileManager.startStreamingBytes(new P2PFileManager.FileTransferListener() {
+                                @Override
+                                public void onMetadataReceived(String fileId, String fileName, long fileSize) {}
+
+                                @Override
+                                public void onProgress(String fileId, int progress) {
+                                    Log.d(TAG, "[File_Transfer] Отправлено байт: " + progress + "%");
+                                }
+
+                                @Override
+                                public void onTransferComplete(String fileId, File file) {
+                                    runOnUiThread(() -> {
+                                        tvChatHistory.append("Система: Файл успешно передан!\n");
+                                        scrollChatToBottom();
+                                    });
+                                }
+
+                                @Override
+                                public void onError(String fileId, String errorReason) {
+                                    runOnUiThread(() -> {
+                                        tvChatHistory.append("Система: Ошибка отправки байт: " + errorReason + "\n");
+                                        scrollChatToBottom();
+                                    });
+                                }
+                            });
+
+                        } else if ("file_reject".equals(msgType)) {
+                            // ОТПРАВИТЕЛЬ: Собеседник нажал «Отклонить»
+                            runOnUiThread(() -> {
+                                tvChatHistory.append("Система: Собеседник отклонил прием файла.\n");
+                                scrollChatToBottom();
+                            });
+
+                        } else {
+                            // ВАША СТАНДАРТНАЯ ЛОГИКА ТЕКСТОВОГО ЧАТА
+                            String senderName = packet.getString("senderName");
+                            String textMessage = packet.getString("text");
+
+                            runOnUiThread(() -> {
+                                tvChatHistory.append(senderName + ": " + textMessage + "\n");
+                                scrollChatToBottom();
+                            });
+                        }
+
+                    } catch (org.json.JSONException e) {
+                        Log.e(TAG, "[P2P_PARSER] Ошибка структуры JSON внутри пакета от " + remoteClientId, e);
+                        runOnUiThread(() -> {
+                            tvChatHistory.append("Система: Получено некорректное сообщение от " + remoteClientId + ".\n");
+                            scrollChatToBottom();
+                        });
+                    } catch (Exception e) {
+                        Log.e(TAG, "[Crypto] Критическая ошибка дешифрации пакета от " + remoteClientId, e);
+                        runOnUiThread(() -> {
+                            tvChatHistory.append("Система: Ошибка дешифрации приватного пакета.\n");
+                            scrollChatToBottom();
+                        });
+                    }
                 }
             }
+
+
         });
     }
 
@@ -529,7 +776,7 @@ public class MainActivity extends AppCompatActivity {
         @Override public void onSetFailure(String s) { Log.e(TAG, "Ошибка установки SDP: " + s); }
     }
 
-    private static class CryptoHelper {
+    public static class CryptoHelper {
         private static final String ALGORITHM = "AES/GCM/NoPadding";
         private static final int TAG_LENGTH_BIT = 128;
         private static final int IV_LENGTH_BYTE = 12;

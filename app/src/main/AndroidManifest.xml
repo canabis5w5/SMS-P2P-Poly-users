@@ -9,8 +9,17 @@
     <!-- Разрешение на аудио (устраняет ошибку AudioRecord status -22) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Если вы нацелены на Android 14+ (API 34), также добавьте этот тип: -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
     <!-- ИСПРАВЛЕНО: Добавлен атрибут usesCleartextTraffic для разрешения протокола ws:// -->
     <application
+        android:requestLegacyExternalStorage="true"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -30,8 +39,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
         <activity
             android:name=".SettingsActivity"
+            android:exported="false" />
+
+        <service
+            android:name=".P2PService"
+            android:foregroundServiceType="connectedDevice"
+            android:enabled="true"
             android:exported="false" />
 
     </application>
